@@ -10,6 +10,7 @@ import streamlit as st
 PROJECT_DIR = Path(__file__).resolve().parent
 MODEL_PATH = PROJECT_DIR / "car_price_model.pkl"
 METRICS_PATH = PROJECT_DIR / "model_metrics.json"
+DATA_PATH = PROJECT_DIR / "used_cars.csv"
 
 
 def normalize_text(value):
@@ -31,13 +32,122 @@ def load_metrics():
         return json.load(file)
 
 
-def show_model_metrics(metrics):
-    st.subheader("Model Evaluation Metrics")
+@st.cache_data
+def load_listing_data():
+    """Load the CSV listings so the app can count matching cars."""
+    if not DATA_PATH.exists():
+        return None
 
+    listings = pd.read_csv(DATA_PATH)
+    required_columns = ["make", "model", "year"]
+    if not set(required_columns).issubset(listings.columns):
+        return None
+
+    optional_columns = ["listing_date"] if "listing_date" in listings.columns else []
+    listings = listings[required_columns + optional_columns].copy()
+    listings["make"] = listings["make"].apply(normalize_text)
+    listings["model"] = listings["model"].apply(normalize_text)
+    listings["year"] = pd.to_numeric(listings["year"], errors="coerce")
+    listings = listings.dropna(subset=["make", "model", "year"])
+    listings["year"] = listings["year"].astype(int)
+
+    if "listing_date" in listings.columns:
+        listings["listing_date"] = pd.to_datetime(
+            listings["listing_date"],
+            errors="coerce",
+        )
+
+    return listings
+
+
+def count_same_cars_on_sale(listings, car_make, car_model, manufacturing_year):
+    """Count listings with the same make, model, and manufacturing year."""
+    if listings is None:
+        return None
+
+    same_cars = listings[
+        (listings["make"] == car_make)
+        & (listings["model"] == car_model)
+        & (listings["year"] == int(manufacturing_year))
+    ]
+
+    return len(same_cars)
+
+
+def estimate_time_to_sell_days(listings, car_make, car_model, manufacturing_year):
+    """Estimate sale time from how long similar active listings have been online."""
+    if listings is None or "listing_date" not in listings.columns:
+        return None
+
+    listings_with_dates = listings.dropna(subset=["listing_date"]).copy()
+    if listings_with_dates.empty:
+        return None
+
+    today = pd.Timestamp(datetime.now().date())
+    match_options = [
+        (
+            "same make, model, and year",
+            listings_with_dates[
+                (listings_with_dates["make"] == car_make)
+                & (listings_with_dates["model"] == car_model)
+                & (listings_with_dates["year"] == int(manufacturing_year))
+            ],
+        ),
+        (
+            "same make and model",
+            listings_with_dates[
+                (listings_with_dates["make"] == car_make)
+                & (listings_with_dates["model"] == car_model)
+            ],
+        ),
+        ("all cars with listing dates", listings_with_dates),
+    ]
+
+    for match_description, matching_rows in match_options:
+        if matching_rows.empty:
+            continue
+
+        listing_ages = (today - matching_rows["listing_date"]).dt.days
+        listing_ages = listing_ages[listing_ages >= 0]
+        if listing_ages.empty:
+            continue
+
+        return {
+            "days": int(round(float(listing_ages.median()))),
+            "sample_size": int(len(listing_ages)),
+            "basis": match_description,
+        }
+
+    return None
+
+
+def show_model_metrics(metrics):
     if not metrics:
+        st.subheader("Model Evaluation Metrics")
         st.info("Metrics will appear here after you train the model.")
         return
 
+    cars_on_sale_count = metrics.get("cars_on_sale_count")
+    rows_after_cleaning = metrics.get("rows_after_cleaning")
+    if cars_on_sale_count is not None:
+        st.subheader("Dataset Summary")
+        sale_column, training_column = st.columns(2)
+        sale_column.metric(
+            "Cars currently on sale in dataset",
+            f"{cars_on_sale_count:,}",
+        )
+        if rows_after_cleaning is not None:
+            training_column.metric(
+                "Cars used for model training",
+                f"{rows_after_cleaning:,}",
+            )
+
+        st.caption(
+            "This count is based on the number of listing rows in the CSV "
+            "dataset used for training."
+        )
+
+    st.subheader("Model Evaluation Metrics")
     best_metrics = metrics["best_model_metrics"]
     st.write(f"Best model: {metrics['best_model']}")
 
@@ -145,6 +255,7 @@ if not MODEL_PATH.exists():
     st.stop()
 
 model = load_model()
+listing_data = load_listing_data()
 current_year = datetime.now().year
 
 car_make_input = st.text_input("Car make", placeholder="Example: Toyota")
@@ -200,6 +311,45 @@ if st.button("Predict Price"):
         )
 
         st.success(f"Current estimated average price: USD {predicted_price:,.0f}")
+        same_cars_count = count_same_cars_on_sale(
+            listing_data,
+            car_make,
+            car_model,
+            manufacturing_year,
+        )
+        if same_cars_count is None:
+            st.info(
+                "Same-car listing count is unavailable because the CSV file "
+                "could not be loaded."
+            )
+        else:
+            st.info(
+                "Same cars currently on sale in dataset: "
+                f"{same_cars_count:,}"
+            )
+
+        sale_time_estimate = estimate_time_to_sell_days(
+            listing_data,
+            car_make,
+            car_model,
+            manufacturing_year,
+        )
+        if sale_time_estimate is None:
+            st.info(
+                "Estimated selling time is unavailable because listing dates "
+                "are not available in the CSV file."
+            )
+        else:
+            st.info(
+                "Estimated time to sell if listed today: about "
+                f"{sale_time_estimate['days']} days."
+            )
+            st.caption(
+                "This is based on the median age of active listings using "
+                f"{sale_time_estimate['basis']} "
+                f"({sale_time_estimate['sample_size']} listings). It is not "
+                "confirmed sold-time data."
+            )
 
         projection = create_price_projection(
             model,

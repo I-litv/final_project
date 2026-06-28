@@ -1,4 +1,5 @@
 import argparse
+import importlib.util
 import json
 from datetime import datetime
 from pathlib import Path
@@ -16,6 +17,12 @@ from sklearn.neighbors import KNeighborsRegressor
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.tree import DecisionTreeRegressor
+
+
+PROJECT_DIR = Path(__file__).resolve().parent
+DEFAULT_CSV_PATH = PROJECT_DIR / "used_cars.csv"
+SCRAPER_PATH = PROJECT_DIR.parent / "scraper" / "scrape_autoria.py"
+DEFAULT_MAX_LISTINGS = 20_000
 
 
 # ============================================================
@@ -38,6 +45,46 @@ CATEGORICAL_COLUMNS = ["make", "model"]
 NUMERIC_COLUMNS = ["year", "mileage_km"]
 
 
+def run_scraper_before_training(
+    csv_path,
+    max_listings,
+    start_page,
+    min_delay,
+    max_delay,
+    allow_partial_scrape,
+):
+    """Run the scraper and wait for it to finish before training starts."""
+    if not SCRAPER_PATH.exists():
+        raise FileNotFoundError(
+            "Scraper file was not found at "
+            f"{SCRAPER_PATH}. Make sure scraper/scrape_autoria.py exists."
+        )
+
+    spec = importlib.util.spec_from_file_location("scrape_autoria", SCRAPER_PATH)
+    scraper_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(scraper_module)
+
+    print("Starting scraper before model training...")
+    scraped_data = scraper_module.scrape_autoria(
+        max_listings=max_listings,
+        start_page=start_page,
+        output_path=csv_path,
+        min_delay=min_delay,
+        max_delay=max_delay,
+    )
+
+    scraped_count = len(scraped_data)
+    if scraped_count < max_listings and not allow_partial_scrape:
+        raise RuntimeError(
+            f"Scraper collected {scraped_count} listings, but {max_listings} "
+            "were requested. Training stopped so the model does not use a "
+            "partially refreshed dataset. Run again later, lower "
+            "--max-listings, or pass --allow-partial-scrape."
+        )
+
+    print(f"Scraper finished with {scraped_count} listings.")
+
+
 def normalize_text(value):
     """Convert text to lowercase and remove extra spaces."""
     return str(value).lower().strip()
@@ -46,6 +93,7 @@ def normalize_text(value):
 def load_and_clean_data(csv_path):
     """Load the CSV file and keep only valid rows for model training."""
     raw_data = pd.read_csv(csv_path)
+    cars_on_sale_count = len(raw_data)
 
     missing_columns = [
         csv_column
@@ -95,7 +143,7 @@ def load_and_clean_data(csv_path):
     data["mileage_km"] = data["mileage_km"].astype(float)
     data["price_usd"] = data["price_usd"].astype(float)
 
-    return data
+    return data, cars_on_sale_count
 
 
 def create_pipeline(regression_model):
@@ -179,12 +227,20 @@ def train_and_compare_models(data):
     return best_pipeline, best_model_name, all_metrics
 
 
-def save_metrics(metrics_path, csv_path, data, best_model_name, all_metrics):
+def save_metrics(
+    metrics_path,
+    csv_path,
+    data,
+    cars_on_sale_count,
+    best_model_name,
+    all_metrics,
+):
     """Save evaluation results so the Streamlit app can display them."""
     metrics = {
         "project": "Used Car Price Estimator for Ukraine",
         "dataset_path": str(csv_path),
         "created_at": datetime.now().isoformat(timespec="seconds"),
+        "cars_on_sale_count": int(cars_on_sale_count),
         "rows_after_cleaning": int(len(data)),
         "features": FEATURE_COLUMNS,
         "target": TARGET_COLUMN,
@@ -202,7 +258,15 @@ def main():
     parser = argparse.ArgumentParser(
         description="Train a used car price estimator from a CSV dataset."
     )
-    parser.add_argument("csv_path", help="Path to the CSV dataset.")
+    parser.add_argument(
+        "csv_path",
+        nargs="?",
+        default=str(DEFAULT_CSV_PATH),
+        help=(
+            "Path to the CSV dataset. By default, the scraper refreshes this "
+            "file before training."
+        ),
+    )
     parser.add_argument(
         "--model-output",
         default="car_price_model.pkl",
@@ -213,13 +277,57 @@ def main():
         default="model_metrics.json",
         help="Where to save model evaluation metrics.",
     )
+    parser.add_argument(
+        "--skip-scrape",
+        action="store_true",
+        help="Train from the existing CSV file without running the scraper first.",
+    )
+    parser.add_argument(
+        "--max-listings",
+        type=int,
+        default=DEFAULT_MAX_LISTINGS,
+        help="How many listings the scraper should collect before training.",
+    )
+    parser.add_argument(
+        "--start-page",
+        type=int,
+        default=0,
+        help="AUTO.RIA search page where scraping should start.",
+    )
+    parser.add_argument(
+        "--scrape-min-delay",
+        type=float,
+        default=1.5,
+        help="Minimum delay between scraper page requests.",
+    )
+    parser.add_argument(
+        "--scrape-max-delay",
+        type=float,
+        default=3.5,
+        help="Maximum delay between scraper page requests.",
+    )
+    parser.add_argument(
+        "--allow-partial-scrape",
+        action="store_true",
+        help="Allow training even if the scraper collected fewer listings than requested.",
+    )
     args = parser.parse_args()
 
     csv_path = Path(args.csv_path)
     model_output_path = Path(args.model_output)
     metrics_output_path = Path(args.metrics_output)
 
-    data = load_and_clean_data(csv_path)
+    if not args.skip_scrape:
+        run_scraper_before_training(
+            csv_path=csv_path,
+            max_listings=args.max_listings,
+            start_page=args.start_page,
+            min_delay=args.scrape_min_delay,
+            max_delay=args.scrape_max_delay,
+            allow_partial_scrape=args.allow_partial_scrape,
+        )
+
+    data, cars_on_sale_count = load_and_clean_data(csv_path)
     if len(data) < 10:
         raise ValueError(
             "Not enough valid rows after cleaning. "
@@ -233,11 +341,13 @@ def main():
         metrics_output_path,
         csv_path,
         data,
+        cars_on_sale_count,
         best_model_name,
         all_metrics,
     )
 
     print("Training complete.")
+    print(f"Cars currently on sale in dataset: {cars_on_sale_count}")
     print(f"Rows used after cleaning: {len(data)}")
     print(f"Best model: {best_model_name}")
     print(f"Best MAE: {all_metrics[best_model_name]['mae']}")
