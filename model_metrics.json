@@ -1,9 +1,9 @@
 {
     "project": "Used Car Price Estimator for Ukraine",
     "dataset_path": "used_cars.csv",
-    "created_at": "2026-06-29T11:02:33",
-    "cars_on_sale_count": 20000,
-    "rows_after_cleaning": 20000,
+    "created_at": "2026-06-29T14:57:02",
+    "cars_on_sale_count": 50000,
+    "rows_after_cleaning": 50000,
     "features": [
         "make",
         "model",
@@ -13,30 +13,30 @@
     "target": "price_usd",
     "best_model": "Random Forest Regressor",
     "best_model_metrics": {
-        "mae": 3715.39,
-        "rmse": 11695.47,
-        "r2_score": 0.7784
+        "mae": 2805.61,
+        "rmse": 8500.46,
+        "r2_score": 0.7886
     },
     "all_model_metrics": {
         "Linear Regression": {
-            "mae": 9554.71,
-            "rmse": 21562.21,
-            "r2_score": 0.2469
+            "mae": 6667.78,
+            "rmse": 14349.17,
+            "r2_score": 0.3977
         },
         "KNN Regressor": {
-            "mae": 8673.28,
-            "rmse": 21031.6,
-            "r2_score": 0.2835
+            "mae": 6229.47,
+            "rmse": 14820.01,
+            "r2_score": 0.3576
         },
         "Decision Tree Regressor": {
-            "mae": 4506.53,
-            "rmse": 13787.31,
-            "r2_score": 0.6921
+            "mae": 3359.52,
+            "rmse": 9470.26,
+            "r2_score": 0.7377
         },
         "Random Forest Regressor": {
-            "mae": 3715.39,
-            "rmse": 11695.47,
-            "r2_score": 0.7784
+            "mae": 2805.61,
+            "rmse": 8500.46,
+            "r2_score": 0.7886
         }
     },
     "selection_note": "Best model selected mainly by lowest MAE."
