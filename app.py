@@ -2,6 +2,7 @@ import json
 import subprocess
 import sys
 from datetime import datetime
+from html import escape
 from pathlib import Path
 
 import joblib
@@ -245,6 +246,19 @@ def create_price_projection(
     return pd.DataFrame(projection_rows)
 
 
+def render_training_log(log_placeholder, log_lines):
+    """Render training logs inside a fixed-height scrollable panel."""
+    log_text = escape("\n".join(log_lines[-400:]))
+    log_placeholder.markdown(
+        f"""
+        <div class="training-log">
+            <pre>{log_text}</pre>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def run_training_with_live_logs(log_placeholder, max_listings, allow_partial_scrape):
     """Run training and stream terminal output into the Streamlit page."""
     command = [
@@ -263,7 +277,7 @@ def run_training_with_live_logs(log_placeholder, max_listings, allow_partial_scr
         f"Scraper target: up to {int(max_listings):,} listings.",
         "Starting model training...",
     ]
-    log_placeholder.code("\n".join(log_lines), language="text")
+    render_training_log(log_placeholder, log_lines)
 
     process = subprocess.Popen(
         command,
@@ -277,7 +291,7 @@ def run_training_with_live_logs(log_placeholder, max_listings, allow_partial_scr
     if process.stdout is not None:
         for line in process.stdout:
             log_lines.append(line.rstrip())
-            log_placeholder.code("\n".join(log_lines[-160:]), language="text")
+            render_training_log(log_placeholder, log_lines)
 
     return_code = process.wait()
     if return_code == 0:
@@ -285,7 +299,7 @@ def run_training_with_live_logs(log_placeholder, max_listings, allow_partial_scr
     else:
         log_lines.append(f"Training process failed with exit code {return_code}.")
 
-    log_placeholder.code("\n".join(log_lines[-160:]), language="text")
+    render_training_log(log_placeholder, log_lines)
     return return_code
 
 
@@ -518,6 +532,26 @@ def apply_app_styles():
                 overflow: hidden;
             }
 
+            .training-log {
+                background: #111827;
+                border: 1px solid #263244;
+                border-radius: 14px;
+                height: 420px;
+                overflow-y: auto;
+                padding: 16px;
+                box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+            }
+
+            .training-log pre {
+                color: #dbeafe;
+                font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+                font-size: 0.84rem;
+                line-height: 1.52;
+                margin: 0;
+                white-space: pre-wrap;
+                overflow-wrap: anywhere;
+            }
+
             @media (max-width: 760px) {
                 .hero-panel {
                     padding: 24px;
@@ -686,9 +720,9 @@ def render_training_section(metrics):
             unsafe_allow_html=True,
         )
         training_log_placeholder = st.empty()
-        training_log_placeholder.code(
-            "Training logs will appear here when you start a run.",
-            language="text",
+        render_training_log(
+            training_log_placeholder,
+            ["Training logs will appear here when you start a run."],
         )
 
     if train_clicked:
