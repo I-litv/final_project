@@ -22,7 +22,7 @@ from sklearn.tree import DecisionTreeRegressor
 PROJECT_DIR = Path(__file__).resolve().parent
 DEFAULT_CSV_PATH = PROJECT_DIR / "used_cars.csv"
 SCRAPER_PATH = PROJECT_DIR / "scraper" / "scrape_autoria.py"
-DEFAULT_MAX_LISTINGS = 20_000
+DEFAULT_MAX_LISTINGS = 50_000
 
 
 # ============================================================
@@ -52,6 +52,7 @@ def run_scraper_before_training(
     min_delay,
     max_delay,
     allow_partial_scrape,
+    keep_existing_csv,
 ):
     """Run the scraper and wait for it to finish before training starts."""
     if not SCRAPER_PATH.exists():
@@ -65,12 +66,17 @@ def run_scraper_before_training(
     spec.loader.exec_module(scraper_module)
 
     print("Starting scraper before model training...")
+    if keep_existing_csv:
+        print("Keeping existing CSV rows and adding new listings.")
+    else:
+        print("Clearing existing CSV before scraping fresh listings.")
     scraped_data = scraper_module.scrape_autoria(
         max_listings=max_listings,
         start_page=start_page,
         output_path=csv_path,
         min_delay=min_delay,
         max_delay=max_delay,
+        reset_output=not keep_existing_csv,
     )
 
     scraped_count = len(scraped_data)
@@ -273,8 +279,8 @@ def main():
         nargs="?",
         default=str(DEFAULT_CSV_PATH),
         help=(
-            "Path to the CSV dataset. By default, the scraper refreshes this "
-            "file before training."
+            "Path to the CSV dataset. By default, the scraper rebuilds this "
+            "file from blank before training."
         ),
     )
     parser.add_argument(
@@ -301,7 +307,7 @@ def main():
     parser.add_argument(
         "--start-page",
         type=int,
-        default=0,
+        default=1,
         help="AUTO.RIA search page where scraping should start.",
     )
     parser.add_argument(
@@ -321,6 +327,14 @@ def main():
         action="store_true",
         help="Allow training even if the scraper collected fewer listings than requested.",
     )
+    parser.add_argument(
+        "--keep-existing-csv",
+        action="store_true",
+        help=(
+            "Keep existing CSV rows and continue scraping instead of rebuilding "
+            "the CSV from blank."
+        ),
+    )
     args = parser.parse_args()
 
     csv_path = Path(args.csv_path)
@@ -335,6 +349,7 @@ def main():
             min_delay=args.scrape_min_delay,
             max_delay=args.scrape_max_delay,
             allow_partial_scrape=args.allow_partial_scrape,
+            keep_existing_csv=args.keep_existing_csv,
         )
 
     print(f"Loading dataset from: {csv_path}", flush=True)

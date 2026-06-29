@@ -537,6 +537,15 @@ def clean_existing_csv(output_path):
     return cleaned_df
 
 
+def reset_output_csv(output_path):
+    """Clear the output CSV and leave only the clean header row."""
+    output_path = Path(output_path)
+    empty_df = empty_output_dataframe()
+    write_cleaned_data(empty_df, output_path)
+    print("Existing CSV was cleared. Starting with a blank clean dataset.")
+    return empty_df
+
+
 def get_seen_listing_keys(records):
     return {
         key
@@ -574,14 +583,19 @@ def save_data(records, output_path):
 
 def scrape_autoria(
     max_listings=MAX_LISTINGS,
-    start_page=0,
+    start_page=1,
     output_path=DEFAULT_OUTPUT_PATH,
     min_delay=1.5,
     max_delay=3.5,
     save_every_pages=SAVE_EVERY_PAGES,
+    reset_output=False,
 ):
     output_path = Path(output_path)
-    all_listings, seen_urls, seen_listing_keys = load_existing_data(output_path)
+    if reset_output:
+        reset_output_csv(output_path)
+        all_listings, seen_urls, seen_listing_keys = [], set(), set()
+    else:
+        all_listings, seen_urls, seen_listing_keys = load_existing_data(output_path)
     page = start_page
     pages_since_save = 0
     save_every_pages = max(1, int(save_every_pages))
@@ -712,7 +726,7 @@ def main():
     parser.add_argument(
         "--start-page",
         type=int,
-        default=0,
+        default=1,
         help="AUTO.RIA search page to start from.",
     )
     parser.add_argument(
@@ -727,6 +741,11 @@ def main():
         action="store_true",
         help="Clean the existing CSV and exit without scraping new pages.",
     )
+    parser.add_argument(
+        "--reset-output",
+        action="store_true",
+        help="Clear the output CSV before scraping new listings.",
+    )
     args = parser.parse_args()
 
     if args.clean_only:
@@ -739,6 +758,7 @@ def main():
         output_path=args.output,
         min_delay=args.min_delay,
         max_delay=args.max_delay,
+        reset_output=args.reset_output,
     )
 
 

@@ -287,7 +287,7 @@ def run_training_with_live_logs(
 
     log_lines = [
         "$ " + " ".join(command),
-        "Existing CSV will be cleaned before scraping new pages.",
+        "Existing CSV will be cleared before scraping fresh listings.",
         f"Scraper target: up to {int(max_listings):,} listings.",
         f"Starting AUTO.RIA page: {int(start_page)}.",
         f"Delay between pages: {float(min_delay):.1f}-{float(max_delay):.1f} seconds.",
@@ -687,13 +687,13 @@ def render_training_section(metrics):
 
     with training_control_column:
         st.markdown(
-            '<div class="panel-title">Clean, scrape, and train</div>',
+            '<div class="panel-title">Clear, scrape, and train</div>',
             unsafe_allow_html=True,
         )
         default_listing_target = int(
             metrics.get("cars_on_sale_count", 20000) if metrics else 20000
         )
-        suggested_listing_target = min(max(default_listing_target + 100, 100), 50000)
+        suggested_listing_target = 50000
         max_listings = st.number_input(
             "Maximum AUTO.RIA listings",
             min_value=100,
@@ -701,23 +701,23 @@ def render_training_section(metrics):
             value=suggested_listing_target,
             step=100,
             help=(
-                "The scraper will clean the existing CSV, then collect listings "
-                "until this target is reached before training."
+                "The scraper will clear the existing CSV, then collect fresh "
+                "listings until this target is reached before training."
             ),
         )
         st.caption(
             f"Current CSV has about {default_listing_target:,} listings. "
-            "Choose a higher target to fetch new AUTO.RIA pages."
+            "Training rebuilds it from blank."
         )
         start_page = st.number_input(
             "AUTO.RIA start page",
-            min_value=0,
+            min_value=1,
             max_value=5000,
-            value=0,
+            value=1,
             step=1,
             help=(
-                "Page 0 starts from the newest listings. A higher page can skip "
-                "already-seen pages when you only need more older listings."
+                "Page 1 starts from the newest listings and rebuilds the dataset "
+                "from the beginning."
             ),
         )
         delay_range = st.slider(
@@ -742,7 +742,7 @@ def render_training_section(metrics):
         )
         render_metric_card(
             "Training command",
-            "Clean + scrape + train",
+            "Fresh scrape + train",
             f"Target: {int(max_listings):,} listings, page {int(start_page)}+",
             tone="blue",
         )
