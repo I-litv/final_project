@@ -1,4 +1,6 @@
 import json
+import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -241,6 +243,51 @@ def create_price_projection(
         )
 
     return pd.DataFrame(projection_rows)
+
+
+def run_training_with_live_logs(log_placeholder):
+    """Run training and stream terminal output into the Streamlit page."""
+    command = [
+        sys.executable,
+        "-u",
+        "train_model.py",
+        "--skip-scrape",
+        "used_cars.csv",
+    ]
+    log_lines = [
+        "$ " + " ".join(command),
+        "Starting model training...",
+    ]
+    log_placeholder.code("\n".join(log_lines), language="text")
+
+    process = subprocess.Popen(
+        command,
+        cwd=PROJECT_DIR,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+
+    if process.stdout is not None:
+        for line in process.stdout:
+            log_lines.append(line.rstrip())
+            log_placeholder.code("\n".join(log_lines[-160:]), language="text")
+
+    return_code = process.wait()
+    if return_code == 0:
+        log_lines.append("Training process finished successfully.")
+    else:
+        log_lines.append(f"Training process failed with exit code {return_code}.")
+
+    log_placeholder.code("\n".join(log_lines[-160:]), language="text")
+    return return_code
+
+
+def clear_cached_project_data():
+    load_model.clear()
+    load_metrics.clear()
+    load_listing_data.clear()
 
 
 def format_usd(value, decimals=0):
@@ -569,6 +616,52 @@ apply_app_styles()
 metrics = load_metrics()
 render_hero(metrics)
 render_notices()
+
+st.markdown(
+    '<div class="section-heading">Model Training</div>',
+    unsafe_allow_html=True,
+)
+
+training_control_column, training_log_column = st.columns([1, 1.6], gap="large")
+
+with training_control_column:
+    st.markdown(
+        '<div class="panel-title">Retrain from current CSV</div>',
+        unsafe_allow_html=True,
+    )
+    render_metric_card(
+        "Training command",
+        "Local run",
+        "Uses used_cars.csv and updates the model plus metrics",
+        tone="blue",
+    )
+    train_clicked = st.button(
+        "Train Model",
+        type="primary",
+        width="stretch",
+    )
+
+with training_log_column:
+    st.markdown(
+        '<div class="panel-title">Training logs</div>',
+        unsafe_allow_html=True,
+    )
+    training_log_placeholder = st.empty()
+    training_log_placeholder.code(
+        "Training logs will appear here when you start a run.",
+        language="text",
+    )
+
+if train_clicked:
+    with st.spinner("Training model..."):
+        training_exit_code = run_training_with_live_logs(training_log_placeholder)
+
+    if training_exit_code == 0:
+        clear_cached_project_data()
+        metrics = load_metrics()
+        st.success("Training finished. The app is now using the updated model files.")
+    else:
+        st.error("Training failed. Check the log output above.")
 
 if not MODEL_PATH.exists():
     st.error(

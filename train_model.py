@@ -190,6 +190,7 @@ def train_and_compare_models(data):
     x = data[FEATURE_COLUMNS]
     y = data[TARGET_COLUMN]
 
+    print("Splitting data into training and test sets...", flush=True)
     x_train, x_test, y_train, y_test = train_test_split(
         x,
         y,
@@ -213,14 +214,23 @@ def train_and_compare_models(data):
     best_mae = float("inf")
 
     for model_name, regression_model in model_options.items():
+        print(f"Training {model_name}...", flush=True)
         pipeline = create_pipeline(regression_model)
         metrics = evaluate_model(pipeline, x_train, x_test, y_train, y_test)
         all_metrics[model_name] = metrics
+        print(
+            f"{model_name} complete: "
+            f"MAE={metrics['mae']}, "
+            f"RMSE={metrics['rmse']}, "
+            f"R2={metrics['r2_score']}",
+            flush=True,
+        )
 
         if metrics["mae"] < best_mae:
             best_mae = metrics["mae"]
             best_model_name = model_name
 
+    print(f"Training final {best_model_name} on all cleaned rows...", flush=True)
     best_pipeline = create_pipeline(clone(model_options[best_model_name]))
     best_pipeline.fit(x, y)
 
@@ -327,16 +337,21 @@ def main():
             allow_partial_scrape=args.allow_partial_scrape,
         )
 
+    print(f"Loading dataset from: {csv_path}", flush=True)
     data, cars_on_sale_count = load_and_clean_data(csv_path)
+    print(f"Loaded {cars_on_sale_count} rows from CSV.", flush=True)
+    print(f"Rows available after cleaning: {len(data)}", flush=True)
     if len(data) < 10:
         raise ValueError(
             "Not enough valid rows after cleaning. "
             "Please provide at least 10 usable rows."
-        )
+    )
 
     best_model, best_model_name, all_metrics = train_and_compare_models(data)
 
+    print(f"Saving model to: {model_output_path}", flush=True)
     joblib.dump(best_model, model_output_path, compress=3)
+    print(f"Saving metrics to: {metrics_output_path}", flush=True)
     save_metrics(
         metrics_output_path,
         csv_path,
