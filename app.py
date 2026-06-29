@@ -549,16 +549,17 @@ def render_metric_card(label, value, note="", tone=""):
     )
 
 
-def render_hero(metrics):
-    if metrics:
+def render_hero(metrics, show_model_stats=False):
+    if show_model_stats and metrics:
         listings = f"{metrics.get('cars_on_sale_count', 0):,}"
         best_model = metrics.get("best_model", "Trained model")
         mae = metrics.get("best_model_metrics", {}).get("mae")
         mae_value = format_usd(mae, decimals=0) if mae is not None else "Available"
+        stat_labels = ("Listings", "Model", "Typical Error")
+        stat_values = (listings, best_model, mae_value)
     else:
-        listings = "Waiting"
-        best_model = "Train first"
-        mae_value = "Waiting"
+        stat_labels = ("Inputs", "Estimate", "Projection")
+        stat_values = ("Make + model", "USD price", "Through December")
 
     st.markdown(
         f"""
@@ -571,16 +572,16 @@ def render_hero(metrics):
             </p>
             <div class="hero-stats">
                 <div class="hero-stat">
-                    <span>Listings</span>
-                    <strong>{listings}</strong>
+                    <span>{stat_labels[0]}</span>
+                    <strong>{stat_values[0]}</strong>
                 </div>
                 <div class="hero-stat">
-                    <span>Model</span>
-                    <strong>{best_model}</strong>
+                    <span>{stat_labels[1]}</span>
+                    <strong>{stat_values[1]}</strong>
                 </div>
                 <div class="hero-stat">
-                    <span>Typical Error</span>
-                    <strong>{mae_value}</strong>
+                    <span>{stat_labels[2]}</span>
+                    <strong>{stat_values[2]}</strong>
                 </div>
             </div>
         </div>
@@ -607,178 +608,188 @@ def render_notices():
     )
 
 
-st.set_page_config(
-    page_title="Used Car Price Estimator for Ukraine",
-    layout="wide",
-)
+def format_file_size(path):
+    if not path.exists():
+        return "Missing"
 
-apply_app_styles()
-metrics = load_metrics()
-render_hero(metrics)
-render_notices()
+    size = float(path.stat().st_size)
+    for unit in ["B", "KB", "MB", "GB"]:
+        if size < 1024 or unit == "GB":
+            return f"{size:.1f} {unit}"
+        size /= 1024
 
-st.markdown(
-    '<div class="section-heading">Model Training</div>',
-    unsafe_allow_html=True,
-)
 
-training_control_column, training_log_column = st.columns([1, 1.6], gap="large")
-
-with training_control_column:
+def render_training_section(metrics):
     st.markdown(
-        '<div class="panel-title">Retrain from current CSV</div>',
+        '<div class="section-heading">Model Training</div>',
         unsafe_allow_html=True,
     )
-    render_metric_card(
-        "Training command",
-        "Local run",
-        "Uses used_cars.csv and updates the model plus metrics",
-        tone="blue",
-    )
-    train_clicked = st.button(
-        "Train Model",
-        type="primary",
-        width="stretch",
+
+    training_control_column, training_log_column = st.columns(
+        [1, 1.6],
+        gap="large",
     )
 
-with training_log_column:
-    st.markdown(
-        '<div class="panel-title">Training logs</div>',
-        unsafe_allow_html=True,
-    )
-    training_log_placeholder = st.empty()
-    training_log_placeholder.code(
-        "Training logs will appear here when you start a run.",
-        language="text",
-    )
-
-if train_clicked:
-    with st.spinner("Training model..."):
-        training_exit_code = run_training_with_live_logs(training_log_placeholder)
-
-    if training_exit_code == 0:
-        clear_cached_project_data()
-        metrics = load_metrics()
-        st.success("Training finished. The app is now using the updated model files.")
-    else:
-        st.error("Training failed. Check the log output above.")
-
-if not MODEL_PATH.exists():
-    st.error(
-        "The trained model file was not found. Train the model first by running:"
-    )
-    st.code("python3 train_model.py path/to/used_cars.csv")
-    show_model_metrics(load_metrics())
-    st.stop()
-
-model = load_model()
-listing_data = load_listing_data()
-current_year = datetime.now().year
-
-st.markdown(
-    '<div class="section-heading">Estimate A Car</div>',
-    unsafe_allow_html=True,
-)
-
-input_column, snapshot_column = st.columns([1.45, 1], gap="large")
-
-with input_column:
-    st.markdown(
-        '<div class="panel-title">Vehicle details</div>',
-        unsafe_allow_html=True,
-    )
-    with st.form("prediction_form"):
-        make_column, model_column = st.columns(2)
-        with make_column:
-            car_make_input = st.text_input(
-                "Car make",
-                placeholder="Toyota",
-            )
-        with model_column:
-            car_model_input = st.text_input(
-                "Car model",
-                placeholder="Corolla",
-            )
-
-        year_column, mileage_column = st.columns(2)
-        with year_column:
-            manufacturing_year = st.number_input(
-                "Manufacturing year",
-                min_value=1990,
-                max_value=current_year,
-                value=min(2015, current_year),
-                step=1,
-            )
-        with mileage_column:
-            mileage_km = st.number_input(
-                "Current mileage in kilometers",
-                min_value=0,
-                value=100000,
-                step=1000,
-            )
-
-        expected_monthly_mileage = st.number_input(
-            "Expected monthly mileage in kilometers",
-            min_value=0,
-            value=1000,
-            step=100,
+    with training_control_column:
+        st.markdown(
+            '<div class="panel-title">Retrain from current CSV</div>',
+            unsafe_allow_html=True,
         )
-
-        submitted = st.form_submit_button(
-            "Estimate Price",
+        render_metric_card(
+            "Training command",
+            "Local run",
+            "Uses used_cars.csv and updates the model plus metrics",
+            tone="blue",
+        )
+        train_clicked = st.button(
+            "Train Model",
             type="primary",
             width="stretch",
         )
 
-with snapshot_column:
+    with training_log_column:
+        st.markdown(
+            '<div class="panel-title">Training logs</div>',
+            unsafe_allow_html=True,
+        )
+        training_log_placeholder = st.empty()
+        training_log_placeholder.code(
+            "Training logs will appear here when you start a run.",
+            language="text",
+        )
+
+    if train_clicked:
+        with st.spinner("Training model..."):
+            training_exit_code = run_training_with_live_logs(training_log_placeholder)
+
+        if training_exit_code == 0:
+            clear_cached_project_data()
+            metrics = load_metrics()
+            st.success(
+                "Training finished. The app is now using the updated model files."
+            )
+        else:
+            st.error("Training failed. Check the log output above.")
+
+    return metrics
+
+
+def render_estimator_page(metrics):
+    render_notices()
+
+    if not MODEL_PATH.exists():
+        st.error(
+            "The trained model file was not found. Open Model information and "
+            "train the model first."
+        )
+        st.code("python3 train_model.py --skip-scrape used_cars.csv")
+        st.stop()
+
+    model = load_model()
+    listing_data = load_listing_data()
+    current_year = datetime.now().year
+
     st.markdown(
-        '<div class="panel-title">Live dataset</div>',
+        '<div class="section-heading">Estimate A Car</div>',
         unsafe_allow_html=True,
     )
-    if metrics:
-        best_metrics = metrics["best_model_metrics"]
+
+    input_column, guide_column = st.columns([1.45, 1], gap="large")
+
+    with input_column:
+        st.markdown(
+            '<div class="panel-title">Vehicle details</div>',
+            unsafe_allow_html=True,
+        )
+        with st.form("prediction_form"):
+            make_column, model_column = st.columns(2)
+            with make_column:
+                car_make_input = st.text_input(
+                    "Car make",
+                    placeholder="Toyota",
+                )
+            with model_column:
+                car_model_input = st.text_input(
+                    "Car model",
+                    placeholder="Corolla",
+                )
+
+            year_column, mileage_column = st.columns(2)
+            with year_column:
+                manufacturing_year = st.number_input(
+                    "Manufacturing year",
+                    min_value=1990,
+                    max_value=current_year,
+                    value=min(2015, current_year),
+                    step=1,
+                )
+            with mileage_column:
+                mileage_km = st.number_input(
+                    "Current mileage in kilometers",
+                    min_value=0,
+                    value=100000,
+                    step=1000,
+                )
+
+            expected_monthly_mileage = st.number_input(
+                "Expected monthly mileage in kilometers",
+                min_value=0,
+                value=1000,
+                step=100,
+            )
+
+            submitted = st.form_submit_button(
+                "Estimate Price",
+                type="primary",
+                width="stretch",
+            )
+
+    with guide_column:
+        st.markdown(
+            '<div class="panel-title">Estimator guide</div>',
+            unsafe_allow_html=True,
+        )
         render_metric_card(
-            "Listings",
-            f"{metrics.get('cars_on_sale_count', 0):,}",
-            "Rows in used_cars.csv",
+            "Typed inputs",
+            "Flexible",
+            "Make and model are typed manually",
             tone="blue",
         )
         render_metric_card(
-            "Training rows",
-            f"{metrics.get('rows_after_cleaning', 0):,}",
-            "Rows used after cleaning",
+            "Mileage",
+            "Important",
+            "Current mileage drives both estimate and projection",
         )
         render_metric_card(
-            "R2 score",
-            f"{best_metrics['r2_score']:.4f}",
-            "Higher is better",
+            "Projection",
+            "December",
+            "Monthly mileage is added through year end",
             tone="gold",
         )
-    else:
-        st.info("Dataset metrics will appear after training.")
 
-if submitted:
-    car_make = normalize_text(car_make_input)
-    car_model = normalize_text(car_model_input)
+    if submitted:
+        car_make = normalize_text(car_make_input)
+        car_model = normalize_text(car_model_input)
 
-    validation_errors = []
-    if not car_make:
-        validation_errors.append("Make should not be empty.")
-    if not car_model:
-        validation_errors.append("Model should not be empty.")
-    if manufacturing_year < 1990 or manufacturing_year > current_year:
-        validation_errors.append(
-            f"Year should be between 1990 and {current_year}."
-        )
-    if mileage_km < 0:
-        validation_errors.append("Current mileage should not be negative.")
-    if expected_monthly_mileage < 0:
-        validation_errors.append("Expected monthly mileage should not be negative.")
+        validation_errors = []
+        if not car_make:
+            validation_errors.append("Make should not be empty.")
+        if not car_model:
+            validation_errors.append("Model should not be empty.")
+        if manufacturing_year < 1990 or manufacturing_year > current_year:
+            validation_errors.append(
+                f"Year should be between 1990 and {current_year}."
+            )
+        if mileage_km < 0:
+            validation_errors.append("Current mileage should not be negative.")
+        if expected_monthly_mileage < 0:
+            validation_errors.append("Expected monthly mileage should not be negative.")
 
-    if validation_errors:
-        for error in validation_errors:
-            st.error(error)
-    else:
+        if validation_errors:
+            for error in validation_errors:
+                st.error(error)
+            return
+
         predicted_price = predict_price(
             model,
             car_make,
@@ -793,17 +804,6 @@ if submitted:
             car_model,
             manufacturing_year,
         )
-        if same_cars_count is None:
-            st.info(
-                "Same-car listing count is unavailable because the CSV file "
-                "could not be loaded."
-            )
-        else:
-            st.info(
-                "Same cars currently on sale in dataset: "
-                f"{same_cars_count:,}"
-            )
-
         sale_time_estimate = estimate_time_to_sell_days(
             listing_data,
             car_make,
@@ -893,8 +893,60 @@ if submitted:
         )
         st.line_chart(chart_data)
 
-st.caption(
-    "Unknown typed make or model values can still be estimated, but accuracy may be lower."
+    st.caption(
+        "Unknown typed make or model values can still be estimated, but accuracy may be lower."
+    )
+
+
+def render_model_information_page(metrics):
+    metrics = render_training_section(metrics)
+
+    st.markdown(
+        '<div class="section-heading">Project Files</div>',
+        unsafe_allow_html=True,
+    )
+    model_column, data_column, metrics_column = st.columns(3)
+    with model_column:
+        render_metric_card(
+            "Model file",
+            format_file_size(MODEL_PATH),
+            "car_price_model.pkl",
+            tone="blue",
+        )
+    with data_column:
+        render_metric_card(
+            "Dataset file",
+            format_file_size(DATA_PATH),
+            "used_cars.csv",
+        )
+    with metrics_column:
+        render_metric_card(
+            "Metrics file",
+            "Ready" if METRICS_PATH.exists() else "Missing",
+            "model_metrics.json",
+            tone="gold",
+        )
+
+    show_model_metrics(metrics)
+
+
+st.set_page_config(
+    page_title="Used Car Price Estimator for Ukraine",
+    layout="wide",
 )
 
-show_model_metrics(metrics)
+apply_app_styles()
+metrics = load_metrics()
+
+selected_page = st.sidebar.radio(
+    "Page",
+    ("Estimate price", "Model information"),
+)
+st.sidebar.caption("Use Model information to retrain and inspect the model.")
+
+render_hero(metrics, show_model_stats=selected_page == "Model information")
+
+if selected_page == "Estimate price":
+    render_estimator_page(metrics)
+else:
+    render_model_information_page(metrics)
