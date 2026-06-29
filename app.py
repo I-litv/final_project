@@ -63,6 +63,76 @@ def load_listing_data():
     return listings
 
 
+@st.cache_data
+def load_statistics_data():
+    """Load clean listing fields needed for market statistics."""
+    if not DATA_PATH.exists():
+        return None
+
+    listings = pd.read_csv(DATA_PATH)
+    required_columns = ["make", "model", "year", "price_usd"]
+    if not set(required_columns).issubset(listings.columns):
+        return None
+
+    if "fuel" not in listings.columns:
+        listings["fuel"] = "Unknown"
+
+    listings = listings[required_columns + ["fuel"]].copy()
+    for column in ["make", "model", "fuel"]:
+        listings[column] = listings[column].fillna("Unknown").astype(str).str.strip()
+        listings.loc[listings[column] == "", column] = "Unknown"
+
+    listings["year"] = pd.to_numeric(listings["year"], errors="coerce")
+    listings["price_usd"] = pd.to_numeric(listings["price_usd"], errors="coerce")
+    listings = listings.dropna(subset=["make", "model", "year", "price_usd"])
+    listings = listings[listings["price_usd"] > 0].copy()
+
+    if listings.empty:
+        return None
+
+    listings["year"] = listings["year"].astype(int)
+    listings["price_usd"] = listings["price_usd"].astype(float)
+    return listings
+
+
+def format_price_range(min_price, max_price):
+    return f"{format_usd(min_price)} - {format_usd(max_price)}"
+
+
+def build_statistics_table(listings, group_columns, limit=None):
+    grouped = (
+        listings.groupby(group_columns, dropna=False)
+        .agg(
+            Listings=("price_usd", "size"),
+            Min_Price=("price_usd", "min"),
+            Max_Price=("price_usd", "max"),
+            Median_Price=("price_usd", "median"),
+        )
+        .reset_index()
+        .sort_values(["Listings", "Median_Price"], ascending=[False, False])
+    )
+
+    if limit:
+        grouped = grouped.head(limit)
+
+    grouped["Price Range"] = grouped.apply(
+        lambda row: format_price_range(row["Min_Price"], row["Max_Price"]),
+        axis=1,
+    )
+    grouped["Median Price"] = grouped["Median_Price"].apply(format_usd)
+    grouped = grouped.drop(columns=["Min_Price", "Max_Price", "Median_Price"])
+
+    return grouped
+
+
+def display_statistics_table(dataframe):
+    st.dataframe(
+        dataframe,
+        hide_index=True,
+        width="stretch",
+    )
+
+
 def count_same_cars_on_sale(listings, car_make, car_model, manufacturing_year):
     """Count listings with the same make, model, and manufacturing year."""
     if listings is None:
@@ -337,6 +407,7 @@ def clear_cached_project_data():
     load_model.clear()
     load_metrics.clear()
     load_listing_data.clear()
+    load_statistics_data.clear()
 
 
 def format_usd(value, decimals=0):
@@ -369,6 +440,139 @@ def apply_app_styles():
             [data-testid="stHeader"] {
                 background: rgba(245, 247, 250, 0.88);
                 backdrop-filter: blur(12px);
+            }
+
+            [data-testid="stSidebar"] {
+                background: #ffffff;
+                border-right: 1px solid var(--line);
+                box-shadow: 10px 0 30px rgba(18, 24, 38, 0.04);
+            }
+
+            [data-testid="stSidebar"] > div:first-child {
+                padding: 1.35rem 1rem 1.5rem;
+            }
+
+            .sidebar-brand {
+                border-bottom: 1px solid var(--line);
+                margin-bottom: 18px;
+                padding: 4px 2px 18px;
+            }
+
+            .sidebar-brand-row {
+                align-items: center;
+                display: flex;
+                gap: 10px;
+            }
+
+            .sidebar-brand-mark {
+                align-items: center;
+                background: #0f766e;
+                border-radius: 10px;
+                color: #ffffff;
+                display: flex;
+                font-size: 0.85rem;
+                font-weight: 800;
+                height: 36px;
+                justify-content: center;
+                width: 36px;
+            }
+
+            .sidebar-brand-text strong {
+                color: var(--ink);
+                display: block;
+                font-size: 1rem;
+                line-height: 1.15;
+            }
+
+            .sidebar-brand-text span {
+                color: var(--muted);
+                display: block;
+                font-size: 0.78rem;
+                font-weight: 650;
+                margin-top: 3px;
+            }
+
+            [data-testid="stSidebar"] [data-testid="stRadio"] > label {
+                color: var(--muted);
+                font-size: 0.72rem;
+                font-weight: 780;
+                letter-spacing: 0.08em;
+                margin: 0 0 8px;
+                text-transform: uppercase;
+            }
+
+            [data-testid="stSidebar"] [role="radiogroup"] {
+                gap: 7px;
+            }
+
+            [data-testid="stSidebar"] [role="radiogroup"] label {
+                align-items: center;
+                background: transparent;
+                border: 1px solid transparent;
+                border-radius: 10px;
+                color: #344054;
+                cursor: pointer;
+                display: flex;
+                min-height: 44px;
+                padding: 10px 12px;
+                transition: background 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+            }
+
+            [data-testid="stSidebar"] [role="radiogroup"] label > div:first-child {
+                display: none;
+            }
+
+            [data-testid="stSidebar"] [role="radiogroup"] label > div:last-child {
+                width: 100%;
+            }
+
+            [data-testid="stSidebar"] [role="radiogroup"] label:hover {
+                background: #f6f8fb;
+                border-color: #dbe4ef;
+            }
+
+            [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) {
+                background: #eaf1ff;
+                border-color: rgba(37, 99, 235, 0.25);
+                box-shadow: inset 3px 0 0 #2563eb;
+                color: #174ea6;
+            }
+
+            [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) p {
+                color: #174ea6;
+                font-weight: 780;
+            }
+
+            [data-testid="stSidebar"] [role="radiogroup"] label p {
+                color: inherit;
+                font-size: 0.94rem;
+                font-weight: 680;
+                line-height: 1.2;
+            }
+
+            .sidebar-status {
+                background: #f7fafc;
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                margin-top: 20px;
+                padding: 13px 14px;
+            }
+
+            .sidebar-status span {
+                color: var(--muted);
+                display: block;
+                font-size: 0.72rem;
+                font-weight: 760;
+                text-transform: uppercase;
+            }
+
+            .sidebar-status strong {
+                color: var(--ink);
+                display: block;
+                font-size: 0.94rem;
+                line-height: 1.35;
+                margin-top: 4px;
+                overflow-wrap: anywhere;
             }
 
             .block-container {
@@ -1090,6 +1294,123 @@ def render_model_information_page(metrics):
     show_model_metrics(metrics)
 
 
+def render_car_statistics_page():
+    listings = load_statistics_data()
+
+    st.markdown(
+        '<div class="section-heading">Car Statistics</div>',
+        unsafe_allow_html=True,
+    )
+
+    if listings is None:
+        st.info("Car statistics will appear after a valid CSV is available.")
+        return
+
+    summary_columns = st.columns(3)
+    with summary_columns[0]:
+        render_metric_card(
+            "Active listings",
+            f"{len(listings):,}",
+            "Current CSV rows",
+            tone="blue",
+        )
+    with summary_columns[1]:
+        render_metric_card(
+            "Make and model groups",
+            f"{listings[['make', 'model']].drop_duplicates().shape[0]:,}",
+            "Unique combinations",
+        )
+    with summary_columns[2]:
+        render_metric_card(
+            "Overall price range",
+            format_price_range(
+                listings["price_usd"].min(),
+                listings["price_usd"].max(),
+            ),
+            "Minimum to maximum",
+            tone="gold",
+        )
+
+    st.markdown(
+        '<div class="section-heading">Top 20 Cars On Sale</div>',
+        unsafe_allow_html=True,
+    )
+    top_cars = build_statistics_table(listings, ["make", "model"], limit=20)
+    display_statistics_table(
+        top_cars.rename(
+            columns={
+                "make": "Make",
+                "model": "Model",
+            }
+        )
+    )
+
+    st.markdown(
+        '<div class="section-heading">Listings By Fuel</div>',
+        unsafe_allow_html=True,
+    )
+    fuel_table = build_statistics_table(listings, ["fuel"])
+    display_statistics_table(
+        fuel_table.rename(
+            columns={
+                "fuel": "Fuel",
+            }
+        )
+    )
+
+    st.markdown(
+        '<div class="section-heading">Top 20 Make And Year Groups</div>',
+        unsafe_allow_html=True,
+    )
+    make_year_table = build_statistics_table(listings, ["make", "year"], limit=20)
+    display_statistics_table(
+        make_year_table.rename(
+            columns={
+                "make": "Make",
+                "year": "Year",
+            }
+        )
+    )
+
+
+def render_sidebar(metrics):
+    if metrics and metrics.get("cars_on_sale_count") is not None:
+        dataset_status = f"{metrics.get('cars_on_sale_count'):,} listings"
+    else:
+        dataset_status = format_file_size(DATA_PATH)
+
+    with st.sidebar:
+        st.markdown(
+            """
+            <div class="sidebar-brand">
+                <div class="sidebar-brand-row">
+                    <div class="sidebar-brand-mark">UC</div>
+                    <div class="sidebar-brand-text">
+                        <strong>Used Car Market</strong>
+                        <span>Final project</span>
+                    </div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        selected_page = st.radio(
+            "Navigation",
+            ("Estimate price", "Model information", "Car statistics"),
+        )
+        st.markdown(
+            f"""
+            <div class="sidebar-status">
+                <span>Dataset</span>
+                <strong>{dataset_status}</strong>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    return selected_page
+
+
 st.set_page_config(
     page_title="Used Car Price Estimator for Ukraine",
     layout="wide",
@@ -1097,16 +1418,16 @@ st.set_page_config(
 
 apply_app_styles()
 metrics = load_metrics()
+selected_page = render_sidebar(metrics)
 
-selected_page = st.sidebar.radio(
-    "Page",
-    ("Estimate price", "Model information"),
+render_hero(
+    metrics,
+    show_model_stats=selected_page in ("Model information", "Car statistics"),
 )
-st.sidebar.caption("Use Model information to retrain and inspect the model.")
-
-render_hero(metrics, show_model_stats=selected_page == "Model information")
 
 if selected_page == "Estimate price":
     render_estimator_page(metrics)
-else:
+elif selected_page == "Model information":
     render_model_information_page(metrics)
+else:
+    render_car_statistics_page()
