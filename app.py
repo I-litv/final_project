@@ -245,17 +245,22 @@ def create_price_projection(
     return pd.DataFrame(projection_rows)
 
 
-def run_training_with_live_logs(log_placeholder):
+def run_training_with_live_logs(log_placeholder, max_listings, allow_partial_scrape):
     """Run training and stream terminal output into the Streamlit page."""
     command = [
         sys.executable,
         "-u",
         "train_model.py",
-        "--skip-scrape",
         "used_cars.csv",
+        "--max-listings",
+        str(int(max_listings)),
     ]
+    if allow_partial_scrape:
+        command.append("--allow-partial-scrape")
+
     log_lines = [
         "$ " + " ".join(command),
+        f"Scraper target: up to {int(max_listings):,} listings.",
         "Starting model training...",
     ]
     log_placeholder.code("\n".join(log_lines), language="text")
@@ -635,10 +640,38 @@ def render_training_section(metrics):
             '<div class="panel-title">Retrain from current CSV</div>',
             unsafe_allow_html=True,
         )
+        default_listing_target = int(
+            metrics.get("cars_on_sale_count", 20000) if metrics else 20000
+        )
+        suggested_listing_target = min(max(default_listing_target + 100, 100), 50000)
+        max_listings = st.number_input(
+            "Maximum AUTO.RIA listings",
+            min_value=100,
+            max_value=50000,
+            value=suggested_listing_target,
+            step=100,
+            help=(
+                "The scraper will clean the existing CSV, then collect listings "
+                "until this target is reached before training."
+            ),
+        )
+        st.caption(
+            f"Current CSV has about {default_listing_target:,} listings. "
+            "Choose a higher target to fetch new AUTO.RIA pages."
+        )
+        allow_partial_scrape = st.checkbox(
+            "Train even if fewer listings are collected",
+            value=True,
+            help=(
+                "Keep this enabled when using this from the UI. It lets training "
+                "continue if AUTO.RIA returns fewer listings than the selected "
+                "maximum."
+            ),
+        )
         render_metric_card(
             "Training command",
-            "Local run",
-            "Uses used_cars.csv and updates the model plus metrics",
+            "Scrape + train",
+            f"Target: {int(max_listings):,} listings",
             tone="blue",
         )
         train_clicked = st.button(
@@ -660,7 +693,11 @@ def render_training_section(metrics):
 
     if train_clicked:
         with st.spinner("Training model..."):
-            training_exit_code = run_training_with_live_logs(training_log_placeholder)
+            training_exit_code = run_training_with_live_logs(
+                training_log_placeholder,
+                max_listings,
+                allow_partial_scrape,
+            )
 
         if training_exit_code == 0:
             clear_cached_project_data()
@@ -682,7 +719,7 @@ def render_estimator_page(metrics):
             "The trained model file was not found. Open Model information and "
             "train the model first."
         )
-        st.code("python3 train_model.py --skip-scrape used_cars.csv")
+        st.code("python3 train_model.py used_cars.csv --max-listings 20000")
         st.stop()
 
     model = load_model()
