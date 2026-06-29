@@ -20,7 +20,7 @@ SEARCH_URL = (
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT_PATH = PROJECT_DIR / "used_cars.csv"
-MAX_LISTINGS = 20_000
+MAX_LISTINGS = 50000
 OUTPUT_COLUMNS = [
     "title",
     "make",

@@ -123,38 +123,49 @@ def estimate_time_to_sell_days(listings, car_make, car_model, manufacturing_year
 
 def show_model_metrics(metrics):
     if not metrics:
-        st.subheader("Model Evaluation Metrics")
+        st.markdown(
+            '<div class="section-heading">Model Evaluation Metrics</div>',
+            unsafe_allow_html=True,
+        )
         st.info("Metrics will appear here after you train the model.")
         return
 
     cars_on_sale_count = metrics.get("cars_on_sale_count")
     rows_after_cleaning = metrics.get("rows_after_cleaning")
-    if cars_on_sale_count is not None:
-        st.subheader("Dataset Summary")
-        sale_column, training_column = st.columns(2)
-        sale_column.metric(
-            "Cars currently on sale in dataset",
-            f"{cars_on_sale_count:,}",
-        )
-        if rows_after_cleaning is not None:
-            training_column.metric(
-                "Cars used for model training",
-                f"{rows_after_cleaning:,}",
-            )
-
-        st.caption(
-            "This count is based on the number of listing rows in the CSV "
-            "dataset used for training."
-        )
-
-    st.subheader("Model Evaluation Metrics")
     best_metrics = metrics["best_model_metrics"]
-    st.write(f"Best model: {metrics['best_model']}")
 
-    mae_column, rmse_column, r2_column = st.columns(3)
-    mae_column.metric("MAE", f"USD {best_metrics['mae']:,.2f}")
-    rmse_column.metric("RMSE", f"USD {best_metrics['rmse']:,.2f}")
-    r2_column.metric("R2 Score", f"{best_metrics['r2_score']:.4f}")
+    st.markdown(
+        '<div class="section-heading">Market And Model Snapshot</div>',
+        unsafe_allow_html=True,
+    )
+
+    if cars_on_sale_count is not None:
+        sale_column, training_column, model_column, mae_column = st.columns(4)
+        with sale_column:
+            render_metric_card(
+                "Listings in dataset",
+                f"{cars_on_sale_count:,}",
+                "Current CSV rows",
+            )
+        if rows_after_cleaning is not None:
+            with training_column:
+                render_metric_card(
+                    "Training rows",
+                    f"{rows_after_cleaning:,}",
+                    "After cleaning",
+                )
+        with model_column:
+            render_metric_card(
+                "Best model",
+                metrics["best_model"],
+                "Selected by MAE",
+            )
+        with mae_column:
+            render_metric_card(
+                "MAE",
+                format_usd(best_metrics["mae"], decimals=0),
+                "Typical absolute error",
+            )
 
     all_metrics_table = []
     for model_name, values in metrics["all_model_metrics"].items():
@@ -167,7 +178,12 @@ def show_model_metrics(metrics):
             }
         )
 
-    st.dataframe(pd.DataFrame(all_metrics_table), hide_index=True)
+    with st.expander("Compare trained models", expanded=False):
+        st.dataframe(
+            pd.DataFrame(all_metrics_table),
+            hide_index=True,
+            width="stretch",
+        )
 
 
 def create_prediction_input(car_make, car_model, year, mileage_km):
@@ -227,24 +243,332 @@ def create_price_projection(
     return pd.DataFrame(projection_rows)
 
 
+def format_usd(value, decimals=0):
+    """Format a number as a compact USD value."""
+    return f"USD {float(value):,.{decimals}f}"
+
+
+def apply_app_styles():
+    st.markdown(
+        """
+        <style>
+            :root {
+                --app-bg: #f5f7fa;
+                --panel: #ffffff;
+                --ink: #15171a;
+                --muted: #667085;
+                --line: #d9e1ea;
+                --green: #087f5b;
+                --green-soft: #e8f6f0;
+                --gold: #b7791f;
+                --gold-soft: #fff4dc;
+                --blue: #2563eb;
+                --blue-soft: #eaf1ff;
+            }
+
+            [data-testid="stAppViewContainer"] {
+                background: var(--app-bg);
+            }
+
+            [data-testid="stHeader"] {
+                background: rgba(245, 247, 250, 0.88);
+                backdrop-filter: blur(12px);
+            }
+
+            .block-container {
+                max-width: 1180px;
+                padding-top: 2rem;
+                padding-bottom: 3rem;
+            }
+
+            h1, h2, h3, p, label, span {
+                letter-spacing: 0;
+            }
+
+            .hero-panel {
+                background: linear-gradient(135deg, #121816 0%, #17433f 58%, #76551c 100%);
+                border: 1px solid rgba(255, 255, 255, 0.18);
+                border-radius: 18px;
+                color: #ffffff;
+                padding: 32px;
+                box-shadow: 0 22px 55px rgba(20, 30, 38, 0.18);
+                margin-bottom: 18px;
+            }
+
+            .hero-eyebrow {
+                color: #c7f3df;
+                font-size: 0.78rem;
+                font-weight: 700;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                margin-bottom: 8px;
+            }
+
+            .hero-title {
+                font-size: clamp(2rem, 4vw, 3.4rem);
+                font-weight: 780;
+                line-height: 1.03;
+                margin: 0;
+                letter-spacing: 0;
+            }
+
+            .hero-copy {
+                max-width: 760px;
+                color: #d8efe8;
+                font-size: 1.05rem;
+                line-height: 1.65;
+                margin: 16px 0 0;
+            }
+
+            .hero-stats {
+                display: grid;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                gap: 12px;
+                margin-top: 26px;
+            }
+
+            .hero-stat {
+                background: rgba(255, 255, 255, 0.11);
+                border: 1px solid rgba(255, 255, 255, 0.16);
+                border-radius: 12px;
+                padding: 14px 16px;
+            }
+
+            .hero-stat span {
+                display: block;
+                color: #c7d2d9;
+                font-size: 0.78rem;
+                font-weight: 700;
+                text-transform: uppercase;
+            }
+
+            .hero-stat strong {
+                display: block;
+                color: #ffffff;
+                font-size: 1.15rem;
+                margin-top: 4px;
+                overflow-wrap: anywhere;
+            }
+
+            .notice-grid {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 14px;
+                margin: 8px 0 26px;
+            }
+
+            .notice-card {
+                background: var(--panel);
+                border: 1px solid var(--line);
+                border-radius: 14px;
+                padding: 16px 18px;
+                box-shadow: 0 12px 30px rgba(18, 24, 38, 0.06);
+            }
+
+            .notice-card strong {
+                color: var(--ink);
+                display: block;
+                font-size: 0.94rem;
+                margin-bottom: 4px;
+            }
+
+            .notice-card span {
+                color: var(--muted);
+                font-size: 0.9rem;
+                line-height: 1.5;
+            }
+
+            .section-heading {
+                color: var(--ink);
+                font-size: 1.35rem;
+                font-weight: 760;
+                margin: 28px 0 12px;
+            }
+
+            .panel-title {
+                color: var(--ink);
+                font-size: 1rem;
+                font-weight: 740;
+                margin: 0 0 12px;
+            }
+
+            .metric-card {
+                background: var(--panel);
+                border: 1px solid var(--line);
+                border-radius: 14px;
+                padding: 17px 18px;
+                min-height: 116px;
+                box-shadow: 0 12px 30px rgba(18, 24, 38, 0.06);
+                margin-bottom: 12px;
+            }
+
+            .metric-card.primary {
+                background: var(--green-soft);
+                border-color: rgba(8, 127, 91, 0.24);
+            }
+
+            .metric-card.blue {
+                background: var(--blue-soft);
+                border-color: rgba(37, 99, 235, 0.2);
+            }
+
+            .metric-card.gold {
+                background: var(--gold-soft);
+                border-color: rgba(183, 121, 31, 0.24);
+            }
+
+            .metric-label {
+                color: var(--muted);
+                font-size: 0.78rem;
+                font-weight: 740;
+                text-transform: uppercase;
+                margin-bottom: 8px;
+            }
+
+            .metric-value {
+                color: var(--ink);
+                font-size: clamp(1.28rem, 2vw, 1.75rem);
+                font-weight: 780;
+                line-height: 1.15;
+                overflow-wrap: anywhere;
+            }
+
+            .metric-note {
+                color: var(--muted);
+                font-size: 0.85rem;
+                margin-top: 8px;
+                line-height: 1.45;
+            }
+
+            div[data-testid="stForm"] {
+                background: var(--panel);
+                border: 1px solid var(--line);
+                border-radius: 14px;
+                padding: 20px 20px 8px;
+                box-shadow: 0 12px 30px rgba(18, 24, 38, 0.06);
+            }
+
+            div[data-testid="stTextInput"] input,
+            div[data-testid="stNumberInput"] input {
+                border-radius: 10px;
+                border-color: #c9d3df;
+            }
+
+            .stButton button {
+                border-radius: 10px;
+                min-height: 46px;
+                font-weight: 740;
+                letter-spacing: 0;
+            }
+
+            .stDataFrame {
+                border-radius: 14px;
+                overflow: hidden;
+            }
+
+            @media (max-width: 760px) {
+                .hero-panel {
+                    padding: 24px;
+                    border-radius: 14px;
+                }
+
+                .hero-stats,
+                .notice-grid {
+                    grid-template-columns: 1fr;
+                }
+
+                .metric-card {
+                    min-height: auto;
+                }
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_metric_card(label, value, note="", tone=""):
+    tone_class = f" {tone}" if tone else ""
+    note_markup = f'<div class="metric-note">{note}</div>' if note else ""
+    st.markdown(
+        f"""
+        <div class="metric-card{tone_class}">
+            <div class="metric-label">{label}</div>
+            <div class="metric-value">{value}</div>
+            {note_markup}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_hero(metrics):
+    if metrics:
+        listings = f"{metrics.get('cars_on_sale_count', 0):,}"
+        best_model = metrics.get("best_model", "Trained model")
+        mae = metrics.get("best_model_metrics", {}).get("mae")
+        mae_value = format_usd(mae, decimals=0) if mae is not None else "Available"
+    else:
+        listings = "Waiting"
+        best_model = "Train first"
+        mae_value = "Waiting"
+
+    st.markdown(
+        f"""
+        <div class="hero-panel">
+            <div class="hero-eyebrow">AI Fundamentals final project</div>
+            <h1 class="hero-title">Used Car Price Estimator for Ukraine</h1>
+            <p class="hero-copy">
+                A cleaner market dashboard for estimating a used car price from
+                make, model, year, mileage, and expected monthly driving.
+            </p>
+            <div class="hero-stats">
+                <div class="hero-stat">
+                    <span>Listings</span>
+                    <strong>{listings}</strong>
+                </div>
+                <div class="hero-stat">
+                    <span>Model</span>
+                    <strong>{best_model}</strong>
+                </div>
+                <div class="hero-stat">
+                    <span>Typical Error</span>
+                    <strong>{mae_value}</strong>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_notices():
+    st.markdown(
+        """
+        <div class="notice-grid">
+            <div class="notice-card">
+                <strong>Educational estimate</strong>
+                <span>The prediction is not a guaranteed market price.</span>
+            </div>
+            <div class="notice-card">
+                <strong>Projection limit</strong>
+                <span>The future graph is a mileage-based model projection, not a guaranteed forecast.</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 st.set_page_config(
     page_title="Used Car Price Estimator for Ukraine",
+    layout="wide",
 )
 
-st.title("Used Car Price Estimator for Ukraine")
-st.write(
-    "This simple machine learning app estimates the average used car price "
-    "in Ukraine from the make, model, manufacturing year, and mileage."
-)
-
-st.warning(
-    "This is an educational estimate for an AI Fundamentals project. "
-    "It is not a guaranteed market price."
-)
-st.warning(
-    "The future price graph is a simple projection based mainly on mileage "
-    "increase, not a guaranteed market forecast."
-)
+apply_app_styles()
+metrics = load_metrics()
+render_hero(metrics)
+render_notices()
 
 if not MODEL_PATH.exists():
     st.error(
@@ -258,29 +582,89 @@ model = load_model()
 listing_data = load_listing_data()
 current_year = datetime.now().year
 
-car_make_input = st.text_input("Car make", placeholder="Example: Toyota")
-car_model_input = st.text_input("Car model", placeholder="Example: Corolla")
-manufacturing_year = st.number_input(
-    "Manufacturing year",
-    min_value=1990,
-    max_value=current_year,
-    value=min(2015, current_year),
-    step=1,
-)
-mileage_km = st.number_input(
-    "Current mileage in kilometers",
-    min_value=0,
-    value=100000,
-    step=1000,
-)
-expected_monthly_mileage = st.number_input(
-    "Expected monthly mileage in kilometers",
-    min_value=0,
-    value=1000,
-    step=100,
+st.markdown(
+    '<div class="section-heading">Estimate A Car</div>',
+    unsafe_allow_html=True,
 )
 
-if st.button("Predict Price"):
+input_column, snapshot_column = st.columns([1.45, 1], gap="large")
+
+with input_column:
+    st.markdown(
+        '<div class="panel-title">Vehicle details</div>',
+        unsafe_allow_html=True,
+    )
+    with st.form("prediction_form"):
+        make_column, model_column = st.columns(2)
+        with make_column:
+            car_make_input = st.text_input(
+                "Car make",
+                placeholder="Toyota",
+            )
+        with model_column:
+            car_model_input = st.text_input(
+                "Car model",
+                placeholder="Corolla",
+            )
+
+        year_column, mileage_column = st.columns(2)
+        with year_column:
+            manufacturing_year = st.number_input(
+                "Manufacturing year",
+                min_value=1990,
+                max_value=current_year,
+                value=min(2015, current_year),
+                step=1,
+            )
+        with mileage_column:
+            mileage_km = st.number_input(
+                "Current mileage in kilometers",
+                min_value=0,
+                value=100000,
+                step=1000,
+            )
+
+        expected_monthly_mileage = st.number_input(
+            "Expected monthly mileage in kilometers",
+            min_value=0,
+            value=1000,
+            step=100,
+        )
+
+        submitted = st.form_submit_button(
+            "Estimate Price",
+            type="primary",
+            width="stretch",
+        )
+
+with snapshot_column:
+    st.markdown(
+        '<div class="panel-title">Live dataset</div>',
+        unsafe_allow_html=True,
+    )
+    if metrics:
+        best_metrics = metrics["best_model_metrics"]
+        render_metric_card(
+            "Listings",
+            f"{metrics.get('cars_on_sale_count', 0):,}",
+            "Rows in used_cars.csv",
+            tone="blue",
+        )
+        render_metric_card(
+            "Training rows",
+            f"{metrics.get('rows_after_cleaning', 0):,}",
+            "Rows used after cleaning",
+        )
+        render_metric_card(
+            "R2 score",
+            f"{best_metrics['r2_score']:.4f}",
+            "Higher is better",
+            tone="gold",
+        )
+    else:
+        st.info("Dataset metrics will appear after training.")
+
+if submitted:
     car_make = normalize_text(car_make_input)
     car_model = normalize_text(car_model_input)
 
@@ -310,7 +694,6 @@ if st.button("Predict Price"):
             mileage_km,
         )
 
-        st.success(f"Current estimated average price: USD {predicted_price:,.0f}")
         same_cars_count = count_same_cars_on_sale(
             listing_data,
             car_make,
@@ -334,16 +717,52 @@ if st.button("Predict Price"):
             car_model,
             manufacturing_year,
         )
+
+        result_columns = st.columns(3)
+        with result_columns[0]:
+            render_metric_card(
+                "Estimated average price",
+                format_usd(predicted_price, decimals=0),
+                "Current model estimate",
+                tone="primary",
+            )
+        with result_columns[1]:
+            if same_cars_count is None:
+                render_metric_card(
+                    "Similar active listings",
+                    "Unavailable",
+                    "CSV could not be loaded",
+                    tone="blue",
+                )
+            else:
+                render_metric_card(
+                    "Similar active listings",
+                    f"{same_cars_count:,}",
+                    "Same make, model, and year",
+                    tone="blue",
+                )
+        with result_columns[2]:
+            if sale_time_estimate is None:
+                render_metric_card(
+                    "Estimated sale time",
+                    "Unavailable",
+                    "Listing dates unavailable",
+                    tone="gold",
+                )
+            else:
+                render_metric_card(
+                    "Estimated sale time",
+                    f"{sale_time_estimate['days']} days",
+                    f"{sale_time_estimate['sample_size']} listings sampled",
+                    tone="gold",
+                )
+
         if sale_time_estimate is None:
-            st.info(
+            st.caption(
                 "Estimated selling time is unavailable because listing dates "
                 "are not available in the CSV file."
             )
         else:
-            st.info(
-                "Estimated time to sell if listed today: about "
-                f"{sale_time_estimate['days']} days."
-            )
             st.caption(
                 "This is based on the median age of active listings using "
                 f"{sale_time_estimate['basis']} "
@@ -360,7 +779,10 @@ if st.button("Predict Price"):
             expected_monthly_mileage,
         )
 
-        st.subheader("Projected Price Until The End Of The Current Year")
+        st.markdown(
+            '<div class="section-heading">Projected Price Through December</div>',
+            unsafe_allow_html=True,
+        )
         st.dataframe(
             projection.rename(
                 columns={
@@ -370,14 +792,16 @@ if st.button("Predict Price"):
                 }
             ),
             hide_index=True,
+            width="stretch",
         )
 
-        chart_data = projection.set_index("month")["predicted_price_usd"]
+        chart_data = projection.set_index("month")["predicted_price_usd"].rename(
+            "Predicted Price (USD)"
+        )
         st.line_chart(chart_data)
 
-st.info(
-    "If the typed make or model was not present in the training data, "
-    "the prediction may be less accurate."
+st.caption(
+    "Unknown typed make or model values can still be estimated, but accuracy may be lower."
 )
 
-show_model_metrics(load_metrics())
+show_model_metrics(metrics)
