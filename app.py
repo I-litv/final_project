@@ -259,7 +259,14 @@ def render_training_log(log_placeholder, log_lines):
     )
 
 
-def run_training_with_live_logs(log_placeholder, max_listings, allow_partial_scrape):
+def run_training_with_live_logs(
+    log_placeholder,
+    max_listings,
+    start_page,
+    min_delay,
+    max_delay,
+    allow_partial_scrape,
+):
     """Run training and stream terminal output into the Streamlit page."""
     command = [
         sys.executable,
@@ -268,13 +275,22 @@ def run_training_with_live_logs(log_placeholder, max_listings, allow_partial_scr
         "used_cars.csv",
         "--max-listings",
         str(int(max_listings)),
+        "--start-page",
+        str(int(start_page)),
+        "--scrape-min-delay",
+        str(float(min_delay)),
+        "--scrape-max-delay",
+        str(float(max_delay)),
     ]
     if allow_partial_scrape:
         command.append("--allow-partial-scrape")
 
     log_lines = [
         "$ " + " ".join(command),
+        "Existing CSV will be cleaned before scraping new pages.",
         f"Scraper target: up to {int(max_listings):,} listings.",
+        f"Starting AUTO.RIA page: {int(start_page)}.",
+        f"Delay between pages: {float(min_delay):.1f}-{float(max_delay):.1f} seconds.",
         "Starting model training...",
     ]
     render_training_log(log_placeholder, log_lines)
@@ -671,7 +687,7 @@ def render_training_section(metrics):
 
     with training_control_column:
         st.markdown(
-            '<div class="panel-title">Retrain from current CSV</div>',
+            '<div class="panel-title">Clean, scrape, and train</div>',
             unsafe_allow_html=True,
         )
         default_listing_target = int(
@@ -693,6 +709,28 @@ def render_training_section(metrics):
             f"Current CSV has about {default_listing_target:,} listings. "
             "Choose a higher target to fetch new AUTO.RIA pages."
         )
+        start_page = st.number_input(
+            "AUTO.RIA start page",
+            min_value=0,
+            max_value=5000,
+            value=0,
+            step=1,
+            help=(
+                "Page 0 starts from the newest listings. A higher page can skip "
+                "already-seen pages when you only need more older listings."
+            ),
+        )
+        delay_range = st.slider(
+            "Delay between scraper pages",
+            min_value=0.0,
+            max_value=5.0,
+            value=(0.3, 0.8),
+            step=0.1,
+            help=(
+                "Lower values are faster, but very aggressive scraping can be "
+                "blocked by the website."
+            ),
+        )
         allow_partial_scrape = st.checkbox(
             "Train even if fewer listings are collected",
             value=True,
@@ -704,8 +742,8 @@ def render_training_section(metrics):
         )
         render_metric_card(
             "Training command",
-            "Scrape + train",
-            f"Target: {int(max_listings):,} listings",
+            "Clean + scrape + train",
+            f"Target: {int(max_listings):,} listings, page {int(start_page)}+",
             tone="blue",
         )
         train_clicked = st.button(
@@ -730,6 +768,9 @@ def render_training_section(metrics):
             training_exit_code = run_training_with_live_logs(
                 training_log_placeholder,
                 max_listings,
+                start_page,
+                delay_range[0],
+                delay_range[1],
                 allow_partial_scrape,
             )
 

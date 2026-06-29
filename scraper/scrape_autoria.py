@@ -21,6 +21,7 @@ SEARCH_URL = (
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT_PATH = PROJECT_DIR / "used_cars.csv"
 MAX_LISTINGS = 50000
+SAVE_EVERY_PAGES = 5
 OUTPUT_COLUMNS = [
     "title",
     "make",
@@ -290,8 +291,9 @@ def split_make_model_title(title):
     return parts[0], parts[1]
 
 
-def get_search_page(page):
-    response = requests.get(
+def get_search_page(page, session=None):
+    client = session or requests
+    response = client.get(
         SEARCH_URL,
         params={"page": page},
         headers=HEADERS,
@@ -507,6 +509,34 @@ def write_cleaned_data(df, output_path):
     df.to_csv(output_path, index=False, encoding="utf-8-sig")
 
 
+def clean_existing_csv(output_path):
+    """Clean an existing CSV file and rewrite it with the final scraper columns."""
+    output_path = Path(output_path)
+    if not output_path.exists():
+        print("No existing CSV found. Starting with an empty cleaned dataset.")
+        return empty_output_dataframe()
+
+    df = pd.read_csv(output_path)
+    original_count = len(df)
+    original_columns = list(df.columns)
+    cleaned_df = clean_listing_dataframe(df)
+    cleaned_count = len(cleaned_df)
+    write_cleaned_data(cleaned_df, output_path)
+
+    removed_columns = [
+        column for column in original_columns if column not in OUTPUT_COLUMNS
+    ]
+    print(
+        f"Cleaned existing CSV before scraping: "
+        f"{original_count} -> {cleaned_count} rows."
+    )
+    if removed_columns:
+        print("Removed extra CSV columns: " + ", ".join(removed_columns))
+    print("CSV file now uses the clean scraper schema.")
+
+    return cleaned_df
+
+
 def get_seen_listing_keys(records):
     return {
         key
@@ -524,22 +554,8 @@ def get_records_and_seen_sets(df):
 
 def load_existing_data(output_path):
     output_path = Path(output_path)
-    if not output_path.exists():
-        print("No existing CSV found. Starting with an empty cleaned dataset.")
-        return [], set(), set()
-
     try:
-        df = pd.read_csv(output_path)
-        original_count = len(df)
-        df = clean_listing_dataframe(df)
-        cleaned_count = len(df)
-
-        print(
-            f"Cleaned existing CSV before scraping: "
-            f"{original_count} -> {cleaned_count} rows."
-        )
-        write_cleaned_data(df, output_path)
-
+        df = clean_existing_csv(output_path)
         records, seen_urls, seen_listing_keys = get_records_and_seen_sets(df)
 
         print(f"Loaded existing file with {len(records)} records.")
@@ -562,10 +578,14 @@ def scrape_autoria(
     output_path=DEFAULT_OUTPUT_PATH,
     min_delay=1.5,
     max_delay=3.5,
+    save_every_pages=SAVE_EVERY_PAGES,
 ):
     output_path = Path(output_path)
     all_listings, seen_urls, seen_listing_keys = load_existing_data(output_path)
     page = start_page
+    pages_since_save = 0
+    save_every_pages = max(1, int(save_every_pages))
+    session = requests.Session()
 
     progress = tqdm(
         total=max_listings,
@@ -577,7 +597,7 @@ def scrape_autoria(
         try:
             print(f"\nScraping page {page}...")
 
-            html = get_search_page(page)
+            html = get_search_page(page, session=session)
             listings = parse_search_page(html)
 
             print(f"Found {len(listings)} valid listings on page {page}.")
@@ -607,15 +627,27 @@ def scrape_autoria(
                 if len(all_listings) >= max_listings:
                     break
 
-            saved_df = save_data(all_listings, output_path)
-            all_listings, seen_urls, seen_listing_keys = get_records_and_seen_sets(
-                saved_df
+            pages_since_save += 1
+            should_save = (
+                pages_since_save >= save_every_pages
+                or len(all_listings) >= max_listings
             )
-            cleaned_new_items = len(all_listings) - saved_count_before_page
-            print(
-                f"Added {cleaned_new_items} new listings after cleaning. "
-                f"Total saved: {len(all_listings)}"
-            )
+            if should_save:
+                saved_df = save_data(all_listings, output_path)
+                all_listings, seen_urls, seen_listing_keys = get_records_and_seen_sets(
+                    saved_df
+                )
+                pages_since_save = 0
+                cleaned_new_items = len(all_listings) - saved_count_before_page
+                print(
+                    f"Added {cleaned_new_items} new listings after cleaning. "
+                    f"Total saved: {len(all_listings)}"
+                )
+            else:
+                print(
+                    f"Added {new_items} new listings. "
+                    f"Total in memory: {len(all_listings)}"
+                )
 
             page += 1
             time.sleep(random.uniform(min_delay, max_delay))
@@ -626,6 +658,7 @@ def scrape_autoria(
             all_listings, seen_urls, seen_listing_keys = get_records_and_seen_sets(
                 saved_df
             )
+            pages_since_save = 0
             time.sleep(10)
             page += 1
 
@@ -635,6 +668,7 @@ def scrape_autoria(
             all_listings, seen_urls, seen_listing_keys = get_records_and_seen_sets(
                 saved_df
             )
+            pages_since_save = 0
             time.sleep(10)
             page += 1
 
@@ -644,6 +678,7 @@ def scrape_autoria(
             all_listings, seen_urls, seen_listing_keys = get_records_and_seen_sets(
                 saved_df
             )
+            pages_since_save = 0
             break
 
         except Exception as error:
@@ -652,11 +687,13 @@ def scrape_autoria(
             all_listings, seen_urls, seen_listing_keys = get_records_and_seen_sets(
                 saved_df
             )
+            pages_since_save = 0
             time.sleep(10)
             page += 1
 
     progress.close()
     df = save_data(all_listings, output_path)
+    session.close()
 
     print("\nDone.")
     print(f"Saved {len(df)} listings to {output_path}")
@@ -685,7 +722,16 @@ def main():
     )
     parser.add_argument("--min-delay", type=float, default=1.5)
     parser.add_argument("--max-delay", type=float, default=3.5)
+    parser.add_argument(
+        "--clean-only",
+        action="store_true",
+        help="Clean the existing CSV and exit without scraping new pages.",
+    )
     args = parser.parse_args()
+
+    if args.clean_only:
+        clean_existing_csv(args.output)
+        return
 
     scrape_autoria(
         max_listings=args.max_listings,
