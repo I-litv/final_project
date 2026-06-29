@@ -21,7 +21,7 @@ from sklearn.tree import DecisionTreeRegressor
 
 PROJECT_DIR = Path(__file__).resolve().parent
 DEFAULT_CSV_PATH = PROJECT_DIR / "used_cars.csv"
-SCRAPER_PATH = PROJECT_DIR.parent / "scraper" / "scrape_autoria.py"
+SCRAPER_PATH = PROJECT_DIR / "scraper" / "scrape_autoria.py"
 DEFAULT_MAX_LISTINGS = 20_000
 
 
@@ -336,7 +336,7 @@ def main():
 
     best_model, best_model_name, all_metrics = train_and_compare_models(data)
 
-    joblib.dump(best_model, model_output_path)
+    joblib.dump(best_model, model_output_path, compress=3)
     save_metrics(
         metrics_output_path,
         csv_path,

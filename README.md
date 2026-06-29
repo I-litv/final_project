@@ -21,7 +21,7 @@ increasing mileage, not a guaranteed market forecast.
   compares metrics, and saves the best model.
 - `app.py` - Streamlit web app for entering car information and getting a
   current price estimate, a projected price table, and a projected price chart.
-- `../scraper/scrape_autoria.py` - collects current AUTO.RIA listings and
+- `scraper/scrape_autoria.py` - collects current AUTO.RIA listings and
   saves them as `used_cars.csv` before model training.
 - `requirements.txt` - Python packages needed to run the project.
 - `model_metrics.json` - generated after training.
@@ -40,8 +40,8 @@ price_usd
 ```
 
 The scraper also saves optional columns such as `listing_date`, `fuel`,
-`gearbox`, `city`, `url`, and `raw_text`. The machine learning model only uses
-the required columns, but the app uses `listing_date` to estimate how long a
+`gearbox`, `city`, and `url`. The machine learning model only uses the
+required columns, but the app uses `listing_date` to estimate how long a
 similar active listing has usually been online.
 
 If your dataset uses different column names, open `train_model.py` and edit
@@ -73,37 +73,43 @@ COLUMN_NAMES = {
 
 `train_model.py`:
 
-1. Runs the AUTO.RIA scraper first and waits until it finishes.
-2. Saves scraper output as `used_cars.csv`.
-3. Loads the CSV file with pandas.
-4. Removes rows with missing important values.
-5. Converts `year`, `mileage_km`, and `price_usd` to numeric values.
-6. Removes impossible values:
+1. Cleans the existing `used_cars.csv` before scraping resumes.
+2. Removes invalid existing rows and duplicate rows.
+3. Runs the AUTO.RIA scraper and waits until it finishes.
+4. Saves scraper output as `used_cars.csv`.
+5. Loads the CSV file with pandas.
+6. Removes rows with missing important values.
+7. Converts `year`, `mileage_km`, and `price_usd` to numeric values.
+8. Removes impossible values:
    - Year less than 1990
    - Year greater than the current year
    - Mileage below 0
    - Price less than or equal to 0
-7. Normalizes `make` and `model` by converting them to lowercase and stripping
+9. Normalizes `make` and `model` by converting them to lowercase and stripping
    extra spaces.
-8. Uses OneHotEncoder for `make` and `model`.
-9. Uses `year` and `mileage_km` as numeric features.
-10. Trains and compares:
+10. Uses OneHotEncoder for `make` and `model`.
+11. Uses `year` and `mileage_km` as numeric features.
+12. Trains and compares:
    - Linear Regression
    - KNN Regressor
    - Decision Tree Regressor
    - Random Forest Regressor
-11. Evaluates each model with:
+13. Evaluates each model with:
    - MAE
    - RMSE
    - R2 score
-12. Saves the best model by lowest MAE as `car_price_model.pkl`.
-13. Saves metrics as `model_metrics.json`.
-14. Saves the number of cars currently on sale in the dataset, based on the
+14. Saves the best model by lowest MAE as `car_price_model.pkl`.
+15. Saves metrics as `model_metrics.json`.
+16. Saves the number of cars currently on sale in the dataset, based on the
     number of listing rows in the CSV file.
 
 By default, the scraper tries to collect `20,000` listings. Training starts
 only after the scraper finishes. If fewer listings are collected, training
 stops unless you pass `--allow-partial-scrape`.
+
+Existing rows are checked before new rows are added. A scraped listing is
+skipped if its URL already exists or if the same make, model, year, mileage,
+and price already exist in the dataset.
 
 ## What The Streamlit App Does
 
