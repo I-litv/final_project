@@ -563,23 +563,43 @@ def apply_app_styles():
             }
 
             .training-log {
-                background: #111827;
-                border: 1px solid #263244;
+                background: #f7f6ef;
+                border: 1px solid #c8d1dc;
                 border-radius: 14px;
                 height: 420px;
                 overflow-y: auto;
                 padding: 16px;
-                box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+                box-shadow:
+                    inset 4px 0 0 #4f7cac,
+                    0 12px 30px rgba(18, 24, 38, 0.07);
+                scrollbar-color: #9fb1c7 #ece9df;
             }
 
             .training-log pre {
-                color: #dbeafe;
+                color: #263238;
                 font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
                 font-size: 0.84rem;
-                line-height: 1.52;
+                font-weight: 560;
+                line-height: 1.56;
                 margin: 0;
                 white-space: pre-wrap;
                 overflow-wrap: anywhere;
+                text-shadow: 0 1px 0 rgba(255, 255, 255, 0.55);
+            }
+
+            .training-log::-webkit-scrollbar {
+                width: 10px;
+            }
+
+            .training-log::-webkit-scrollbar-track {
+                background: #ece9df;
+                border-radius: 999px;
+            }
+
+            .training-log::-webkit-scrollbar-thumb {
+                background: #9fb1c7;
+                border: 2px solid #ece9df;
+                border-radius: 999px;
             }
 
             @media (max-width: 760px) {
