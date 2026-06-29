@@ -1359,14 +1359,19 @@ def render_car_statistics_page():
     )
 
     st.markdown(
-        '<div class="section-heading">Top 20 Make And Year Groups</div>',
+        '<div class="section-heading">Top 20 Make, Model, And Year Groups</div>',
         unsafe_allow_html=True,
     )
-    make_year_table = build_statistics_table(listings, ["make", "year"], limit=20)
+    make_year_table = build_statistics_table(
+        listings,
+        ["make", "model", "year"],
+        limit=20,
+    )
     display_statistics_table(
         make_year_table.rename(
             columns={
                 "make": "Make",
+                "model": "Model",
                 "year": "Year",
             }
         )
@@ -1396,7 +1401,7 @@ def render_sidebar(metrics):
         )
         selected_page = st.radio(
             "Navigation",
-            ("Estimate price", "Model information", "Car statistics"),
+            ("Estimate price", "Car statistics", "Model information"),
         )
         st.markdown(
             f"""

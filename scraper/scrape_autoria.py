@@ -46,6 +46,19 @@ TEXT_COLUMNS = [
     "listing_date",
     "url",
 ]
+KNOWN_MULTI_WORD_MAKES = [
+    "Alfa Romeo",
+    "Aston Martin",
+    "BMW Alpina",
+    "Dong Feng",
+    "DS Automobiles",
+    "Great Wall",
+    "Iran Khodro",
+    "Land Rover",
+    "Lynk & Co",
+    "Rolls Royce",
+    "ZX Auto",
+]
 
 HEADERS = {
     "User-Agent": (
@@ -71,6 +84,16 @@ def clean_text(value):
     value = str(value).replace("\xa0", " ")
     value = re.sub(r"\s+", " ", value)
     return value.strip()
+
+
+def normalize_make_match(value):
+    cleaned_value = clean_text(value)
+    if not cleaned_value:
+        return ""
+
+    cleaned_value = re.sub(r"[^\w]+", " ", cleaned_value, flags=re.UNICODE)
+    cleaned_value = re.sub(r"\s+", " ", cleaned_value)
+    return cleaned_value.lower().strip()
 
 
 def normalize_for_key(value):
@@ -264,7 +287,33 @@ def extract_gearbox(text):
     return None
 
 
-def split_make_model_title(title):
+def extract_url_make_name(url):
+    if not url or not isinstance(url, str):
+        return None
+
+    match = re.search(r"/auto_([^/_]+)_", url)
+    if not match:
+        return None
+
+    return match.group(1).replace("-", " ")
+
+
+def match_make_from_title(parts, expected_make_name):
+    expected_make_key = normalize_make_match(expected_make_name)
+    if not expected_make_key:
+        return None, None
+
+    max_make_words = min(4, len(parts))
+    for token_count in range(1, max_make_words + 1):
+        make_candidate = " ".join(parts[:token_count])
+        if normalize_make_match(make_candidate) == expected_make_key:
+            model_candidate = " ".join(parts[token_count:]).strip() or None
+            return make_candidate, model_candidate
+
+    return None, None
+
+
+def split_make_model_title(title, url=None):
     if not title:
         return None, None
 
@@ -288,7 +337,17 @@ def split_make_model_title(title):
     if len(parts) == 1:
         return parts[0], None
 
-    return parts[0], parts[1]
+    url_make_name = extract_url_make_name(url)
+    make, model = match_make_from_title(parts, url_make_name)
+    if make:
+        return make, model
+
+    for known_make in sorted(KNOWN_MULTI_WORD_MAKES, key=len, reverse=True):
+        make, model = match_make_from_title(parts, known_make)
+        if make:
+            return make, model
+
+    return parts[0], " ".join(parts[1:]).strip() or None
 
 
 def get_search_page(page, session=None):
@@ -385,7 +444,7 @@ def parse_listing_card(card, today=None):
     fuel = extract_fuel(fuel_text)
     gearbox = extract_gearbox(gearbox_text)
     city = feature_values[-1] if feature_values else extract_city(full_text)
-    make, model = split_make_model_title(title)
+    make, model = split_make_model_title(title, url=url)
 
     if not url or not title:
         return None
@@ -457,6 +516,27 @@ def clean_listing_dataframe(df):
 
     for column in TEXT_COLUMNS:
         cleaned[column] = cleaned[column].apply(clean_text)
+
+    if "title" in cleaned.columns:
+        urls = cleaned["url"] if "url" in cleaned.columns else [None] * len(cleaned)
+        parsed_titles = [
+            split_make_model_title(title, url=url)
+            for title, url in zip(cleaned["title"], urls)
+        ]
+        cleaned["make"] = [
+            parsed_make or existing_make
+            for (parsed_make, _), existing_make in zip(
+                parsed_titles,
+                cleaned["make"],
+            )
+        ]
+        cleaned["model"] = [
+            parsed_model or existing_model
+            for (_, parsed_model), existing_model in zip(
+                parsed_titles,
+                cleaned["model"],
+            )
+        ]
 
     cleaned["year"] = pd.to_numeric(cleaned["year"], errors="coerce")
     cleaned["mileage_km"] = pd.to_numeric(cleaned["mileage_km"], errors="coerce")
