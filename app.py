@@ -266,6 +266,7 @@ def run_training_with_live_logs(
     min_delay,
     max_delay,
     allow_partial_scrape,
+    skip_scrape=False,
 ):
     """Run training and stream terminal output into the Streamlit page."""
     command = [
@@ -273,26 +274,39 @@ def run_training_with_live_logs(
         "-u",
         "train_model.py",
         "used_cars.csv",
-        "--max-listings",
-        str(int(max_listings)),
-        "--start-page",
-        str(int(start_page)),
-        "--scrape-min-delay",
-        str(float(min_delay)),
-        "--scrape-max-delay",
-        str(float(max_delay)),
     ]
-    if allow_partial_scrape:
-        command.append("--allow-partial-scrape")
+    if skip_scrape:
+        command.append("--skip-scrape")
+        log_lines = [
+            "$ " + " ".join(command),
+            "Training from the current CSV. No scraping will run.",
+            "Existing CSV will not be cleared or modified by the scraper.",
+            "Starting model training...",
+        ]
+    else:
+        command.extend(
+            [
+                "--max-listings",
+                str(int(max_listings)),
+                "--start-page",
+                str(int(start_page)),
+                "--scrape-min-delay",
+                str(float(min_delay)),
+                "--scrape-max-delay",
+                str(float(max_delay)),
+            ]
+        )
+        if allow_partial_scrape:
+            command.append("--allow-partial-scrape")
 
-    log_lines = [
-        "$ " + " ".join(command),
-        "Existing CSV will be cleared before scraping fresh listings.",
-        f"Scraper target: up to {int(max_listings):,} listings.",
-        f"Starting AUTO.RIA page: {int(start_page)}.",
-        f"Delay between pages: {float(min_delay):.1f}-{float(max_delay):.1f} seconds.",
-        "Starting model training...",
-    ]
+        log_lines = [
+            "$ " + " ".join(command),
+            "Existing CSV will be cleared before scraping fresh listings.",
+            f"Scraper target: up to {int(max_listings):,} listings.",
+            f"Starting AUTO.RIA page: {int(start_page)}.",
+            f"Delay between pages: {float(min_delay):.1f}-{float(max_delay):.1f} seconds.",
+            "Starting model training...",
+        ]
     render_training_log(log_placeholder, log_lines)
 
     process = subprocess.Popen(
@@ -746,11 +760,18 @@ def render_training_section(metrics):
             f"Target: {int(max_listings):,} listings, page {int(start_page)}+",
             tone="blue",
         )
-        train_clicked = st.button(
-            "Train Model",
-            type="primary",
-            width="stretch",
-        )
+        train_button_column, skip_scrape_button_column = st.columns(2)
+        with train_button_column:
+            train_clicked = st.button(
+                "Train Model",
+                type="primary",
+                width="stretch",
+            )
+        with skip_scrape_button_column:
+            train_without_scraping_clicked = st.button(
+                "Train Without Scraping",
+                width="stretch",
+            )
 
     with training_log_column:
         st.markdown(
@@ -763,8 +784,14 @@ def render_training_section(metrics):
             ["Training logs will appear here when you start a run."],
         )
 
-    if train_clicked:
-        with st.spinner("Training model..."):
+    if train_clicked or train_without_scraping_clicked:
+        skip_scrape = train_without_scraping_clicked and not train_clicked
+        spinner_message = (
+            "Training from current CSV..."
+            if skip_scrape
+            else "Scraping fresh listings and training model..."
+        )
+        with st.spinner(spinner_message):
             training_exit_code = run_training_with_live_logs(
                 training_log_placeholder,
                 max_listings,
@@ -772,6 +799,7 @@ def render_training_section(metrics):
                 delay_range[0],
                 delay_range[1],
                 allow_partial_scrape,
+                skip_scrape=skip_scrape,
             )
 
         if training_exit_code == 0:
